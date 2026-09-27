@@ -1,97 +1,49 @@
 ---
 name: offline-deployment
-description: Package, install, upgrade, back up and operate the application on a client's local network with no internet access (air-gapped/LAN), using Docker bundles or a native install on Windows or Linux. Use for any LAN, on-premise, offline or air-gapped client deployment, or questions about TLS certificates, time sync, backups or updates on client servers.
+description: Package, install, upgrade, back up and operate the application on a client's Linux server on a local network with no internet access (air-gapped/LAN), via Docker bundles or a native systemd install. Use for any LAN, on-premise, offline or air-gapped client deployment, or questions about HTTPS certificates, time sync, backups or updates on client servers.
 ---
 
-# Offline / LAN deployment
+# Offline / LAN deployment (Linux servers)
 
-Client servers may never see the internet. Everything the app needs must travel in the bundle, and the install must be repeatable by someone following a checklist.
+Client servers are Linux and may never see the internet. Everything the app needs must travel with you, and the install must be repeatable by someone following a checklist.
 
-## Pre-flight: gather from the client
+**The step-by-step guide is `deploy/linux/README.md`.** Follow it. Don't improvise a different procedure. When helping with a deployment, work through its sections in order and adapt only the values (addresses, versions, paths).
 
-| Item | Why |
-|---|---|
-| Server OS (Windows Server / Linux) and whether Docker is allowed | picks the install path below |
-| LAN IP or internal hostname users will type | `SITE_ADDRESS`; the certificate is issued for it |
-| Who manages client PCs (can we install a root certificate on them?) | HTTPS trust |
-| Internal time source (domain controller / NTP server) | token expiry depends on correct clocks |
-| Where backups can be copied (NAS, USB) | backups on the same disk aren't backups |
-| Oldest app version currently installed there | migration path to test |
+## Pick the install option
 
-## Path A: Docker (recommended)
+| Option | When | Files |
+|---|---|---|
+| **A: Docker** (default) | Client allows Docker | `deploy/docker-compose.yml`, `deploy/caddy/Caddyfile.lan`, `deploy/scripts/*.sh` |
+| **B: Native systemd** | Docker not allowed | `deploy/linux/app-backend.service`, `deploy/linux/Caddyfile.native` |
 
-### Build the bundle (on a machine with internet)
-```bash
-deploy/scripts/build-bundle.sh 1.2.0      # → deploy/bundles/app-1.2.0.tar.gz
-```
-The bundle contains the app images, the Postgres image, compose file, Caddy configs, scripts, and SHA256 checksums.
+## Rules that apply to every client install
 
-### Install on the client server
-```bash
-tar -xzf app-1.2.0.tar.gz && cd app-1.2.0
-./scripts/install.sh          # first run creates .env and stops
-# edit .env: DEPLOY_MODE=lan, SITE_ADDRESS, POSTGRES_PASSWORD, JWT_SECRET_KEY (generate both randomly)
-./scripts/install.sh          # verifies checksums, loads images, migrates, starts
-docker compose run --rm backend python -m app.cli create-admin --email admin@client.local --name "Admin"
-```
+1. **HTTPS is mandatory**, even on the LAN. Session cookies are `Secure`; over plain `http://<ip>` login silently fails. Caddy's `tls internal` provides certificates offline; client PCs must trust its root CA once (README → "Trust the HTTPS certificate").
+2. **Nothing calls the internet.** No CDN assets, external auth, telemetry or update checks. The SPA's CSP (`default-src 'self'`) enforces this for the frontend. Never loosen it for convenience. API docs are off in production.
+3. **Unique random secrets per client** (`JWT_SECRET_KEY`, DB password), stored in a `600`/`640` env file, never committed, and a copy handed to the client securely.
+4. **Clock sync** to the client's internal time source (chrony). JWT expiry depends on it.
+5. **Backups**: nightly, verified, rotated, copied **off the server**, and a restore **tested** at hand-over. Include Caddy's CA data, or every PC must re-trust a new certificate.
+6. **Upgrades back up first**, then migrate (`alembic upgrade head`), then restart. Keep the previous version's files until the new one is verified.
+7. **Only 22/80/443 open.** PostgreSQL and the backend listen on localhost / internal Docker network only.
 
-### Upgrade
-Build a new bundle, copy it over, run `./scripts/install.sh` from the new folder with the **same `.env`** copied in. It backs up the database before migrating.
+## Preparing a release for an offline client
 
-## Path B: Native install (no Docker)
+- Test the database upgrade from the **oldest version any client runs**, not just the previous release (see the `db-migration` skill → expand/contract).
+- Docker: `deploy/scripts/build-bundle.sh <version>` produces a checksummed bundle with all images.
+- Native: follow README → "Option B → On the build machine". Wheels must be downloaded for the **server's** Python version and platform (`manylinux`, `x86_64` or `aarch64`), not the build machine's.
+- Write release notes that say whether the migration changes data and whether rollback needs a restore.
 
-Install offline from pre-downloaded installers: PostgreSQL, Python 3.12, uv, Caddy. Vendor Python dependencies on an internet machine:
+## When something goes wrong on site
 
-```bash
-cd backend
-uv export --no-dev --format requirements-txt > requirements.txt
-uv pip download -r requirements.txt -d wheels/  # or: pip download -r requirements.txt -d wheels/ --platform <target>
-# on the server:
-uv venv && uv pip install --no-index --find-links wheels/ -r requirements.txt
-```
-Build the frontend (`npm run build`) on the internet machine and copy `frontend/dist/`.
+| Symptom | Likely cause | Check |
+|---|---|---|
+| Login "works" but you're immediately logged out | Not HTTPS, or wrong address in `SITE_ADDRESS` | URL starts with `https://`; certificate issued for the typed address |
+| Browser certificate warning | Root CA not trusted on that PC | Install `root.crt` (README) |
+| Random logouts / "session expired" | Server clock drift | `chronyc tracking` |
+| 502 from Caddy | Backend down | `journalctl -u app-backend` / `docker compose logs backend` |
+| Backend won't start in production | Weak `JWT_SECRET_KEY` or `COOKIE_SECURE=false` | The startup error names the setting |
+| Readiness check 503 | Database unreachable | `systemctl status postgresql` / `docker compose ps db` |
 
-- **Linux**: run the backend with a systemd unit: `ExecStart=/opt/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers`, `User=app`, `EnvironmentFile=/opt/app/backend/.env`, `Restart=always`.
-- **Windows**: run uvicorn as a service with NSSM (or WinSW), bound to `127.0.0.1:8000`. Run Caddy as a service the same way. Open only ports 80/443 in Windows Firewall.
-- Use `deploy/caddy/Caddyfile.lan`, replacing `backend:8000` with `127.0.0.1:8000` and `/srv` with the path to `dist`.
-- Run migrations with `uv run alembic upgrade head` (or `.venv` equivalent) before starting a new version.
+## Hand-over
 
-## HTTPS on the LAN (required)
-
-Session cookies are `Secure`: over plain `http://192.168.x.x` the browser drops them and login silently fails. `Caddyfile.lan` uses `tls internal`: Caddy runs its own certificate authority, fully offline.
-
-**Trust the certificate** on each client PC once:
-1. Export the root: `docker compose cp web:/data/caddy/pki/authorities/local/root.crt ./client-root-ca.crt`
-2. Windows: double-click → Install Certificate → Local Machine → "Trusted Root Certification Authorities" (or push via Group Policy). macOS: Keychain → System → Always Trust. Linux: copy to `/usr/local/share/ca-certificates/` → `update-ca-certificates`. Firefox may need `security.enterprise_roots.enabled=true`.
-3. Back up the `caddy_data` volume (`backup.sh` does). Losing it means re-trusting a new root on every PC.
-
-If the client has its own internal CA, use their certificate instead: `tls /path/cert.pem /path/key.pem` in the Caddyfile.
-
-## Time sync
-
-JWTs expire by clock. A server clock that's minutes off logs users out or accepts stale tokens (30 s leeway is built in).
-- Point the server at the client's internal time source (Windows: `w32tm /config /manualpeerlist:<dc> /syncfromflags:manual /update`; Linux: `chrony` with `server <internal-ntp> iburst`).
-- Check it during every visit: `w32tm /query /status` or `chronyc tracking`.
-
-## Backups
-
-- Schedule `scripts/backup.sh` daily (cron / Windows Task Scheduler via WSL or Git Bash). It dumps Postgres, archives certificates, verifies the dump, and keeps 14 days.
-- Copy `backups/` off the server (NAS/USB) on a schedule the client owns.
-- **Test a restore** (`scripts/restore.sh`) on a spare machine at hand-over and after major upgrades. An untested backup is a guess.
-
-## Nothing may call the internet
-
-- No CDN fonts, scripts or analytics in the frontend (the CSP `default-src 'self'` enforces this; don't loosen it).
-- No external identity providers, no update checks, no telemetry.
-- API docs are disabled in production (`ENABLE_DOCS=false`). Swagger UI loads from a CDN, so it wouldn't work offline anyway.
-- The backend and Postgres sit on an internal Docker network with no outbound access.
-
-## Hand-over checklist
-
-- [ ] HTTPS works from a client PC without warnings
-- [ ] Admin created; default/demo accounts removed
-- [ ] `.env` has unique random secrets, `chmod 600`, and a copy is stored securely by the client
-- [ ] Server time synced to the internal source
-- [ ] Backup scheduled, copied off-machine, **restore tested**
-- [ ] Firewall: only 80/443 open
-- [ ] Version, install date, `SITE_ADDRESS` and contacts recorded in the client's runbook
+Complete the hand-over checklist at the end of `deploy/linux/README.md`, and record version, address, install option, backup location and contacts in the client's runbook.

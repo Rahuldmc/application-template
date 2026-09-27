@@ -14,7 +14,7 @@ const loginSchema = z.object({
     .string()
     .trim()
     .min(1, "Email is required")
-    .includes("@", { message: "Enter a valid email" }),
+    .includes("@", { error: "Enter a valid email" }),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -47,7 +47,7 @@ export function LoginPage() {
       password: form.get("password"),
     });
     if (!parsed.success) {
-      const errors = parsed.error.flatten().fieldErrors;
+      const errors = z.flattenError(parsed.error).fieldErrors;
       setFieldErrors({ email: errors.email?.[0], password: errors.password?.[0] });
       return;
     }

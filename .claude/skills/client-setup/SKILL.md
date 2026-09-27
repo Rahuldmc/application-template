@@ -12,7 +12,7 @@ Run this once, right after creating a repo from the template.
 Ask the user for:
 
 1. **Client / project name** and a short machine name (lowercase, hyphens), e.g. `acme-inventory`
-2. **Deployment mode**: `cloud` (public domain, Let's Encrypt) or `lan` (offline, internal CA). If LAN: server OS, and whether Docker is allowed.
+2. **Deployment mode**: `cloud` (public domain, Let's Encrypt) or `lan` (offline, internal CA). If LAN: the Linux distro, version and CPU architecture, and whether Docker is allowed.
 3. **Address users will type**: domain (cloud) or LAN IP / internal hostname (lan)
 4. **Roles needed** beyond `admin` / `user`
 5. **Does the frontend live on the same origin as the API?** (default yes; if not, the allowed origins)

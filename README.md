@@ -47,7 +47,7 @@ deploy/                Docker Compose, Caddy (cloud + lan), offline bundle/backu
 
 ## Getting started
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22 LTS, and PostgreSQL 15+. Docker is optional.
+**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 24 LTS (see `.nvmrc`), and PostgreSQL 15+. Docker is optional.
 
 ### 1. Database
 
@@ -121,10 +121,10 @@ Example prompts:
 
 ## Deployment
 
-See `deploy/` and the `offline-deployment` skill.
+See `deploy/`, the **[Linux deployment guide](deploy/linux/README.md)**, and the `offline-deployment` skill.
 
 - **Cloud:** `DEPLOY_MODE=cloud`, `SITE_ADDRESS=app.example.com`. Caddy obtains a public certificate automatically.
-- **LAN / offline:** `DEPLOY_MODE=lan`, `SITE_ADDRESS=<lan ip or hostname>`. Caddy issues certificates from its own internal CA. Build a bundle with `deploy/scripts/build-bundle.sh <version>` and install it with `scripts/install.sh` on the client server.
+- **LAN / offline:** `DEPLOY_MODE=lan`, `SITE_ADDRESS=<lan ip or hostname>`. Caddy issues certificates from its own internal CA. Install with Docker (`deploy/scripts/build-bundle.sh <version>`, then `scripts/install.sh` on the server) or natively with systemd. Both are covered step by step in `deploy/linux/README.md`.
 
 ## Security model (summary)
 
