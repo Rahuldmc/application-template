@@ -1,0 +1,25 @@
+# OPTIONAL local PostgreSQL for development, for people who have Docker.
+# Without Docker, install PostgreSQL natively instead (see README).
+#
+#   docker compose up -d
+#
+# Creates `app` (development) and `app_test` (wiped by the test suite).
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app  # local development only
+      POSTGRES_DB: app
+    ports:
+      - "127.0.0.1:5432:5432"  # localhost only, never exposed on the network
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/dev/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

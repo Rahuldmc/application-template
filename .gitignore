@@ -1,0 +1,42 @@
+# Secrets: only the *.example files are committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Deploy artifacts
+deploy/bundles/
+backups/
+*.dump
+*.tar
+*.tar.gz
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code: settings.json is shared, settings.local.json is personal
+.claude/settings.local.json

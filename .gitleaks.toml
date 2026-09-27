@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test-only fixtures and documented placeholders"
+paths = [
+  '''backend/tests/''',
+  '''\.env\.example$''',
+]

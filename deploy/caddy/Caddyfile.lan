@@ -1,0 +1,48 @@
+# LAN / offline: HTTPS with Caddy's own internal certificate authority.
+# No internet needed. Each client machine must trust Caddy's root certificate
+# once (see .claude/skills/offline-deployment/SKILL.md, "Trust the certificate").
+#
+# SITE_ADDRESS is the LAN IP or internal hostname users type in the browser,
+# e.g. 192.168.1.50 or app.client.local
+{
+	# Never try to reach Let's Encrypt or check for updates.
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+(common) {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+}
+
+{$SITE_ADDRESS} {
+	tls internal
+	import common
+}
+
+# Plain HTTP only redirects to HTTPS: session cookies are Secure and need it.
+http://{$SITE_ADDRESS} {
+	redir https://{host}{uri} permanent
+}

@@ -1,0 +1,44 @@
+# Install once per clone:  uv tool install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+        exclude: ^frontend/tsconfig.*\.json$  # tsconfig allows comments
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # Blocks commits that contain secrets (API keys, passwords, tokens).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend eslint
+        entry: bash -c "cd frontend && npx eslint --max-warnings=0 ."
+        language: system
+        files: ^frontend/src/
+        pass_filenames: false
+      - id: frontend-prettier
+        name: frontend prettier
+        entry: bash -c "cd frontend && npx prettier --check ."
+        language: system
+        files: ^frontend/
+        pass_filenames: false
